@@ -275,7 +275,23 @@ void lidar_callback(const sensor_msgs::PointCloud2ConstPtr& laser_msg)
 
     // TODO: transform to IMU body frame
 
-    
+    // ignore lidar camera offset for now?
+    // 4. offset T_lidar -> T_camera 
+    pcl::PointCloud<PointType>::Ptr laser_cloud_offset(new pcl::PointCloud<PointType>());
+    Eigen::Affine3f transOffset = pcl::getTransformation(L_C_TX, L_C_TY, L_C_TZ, L_C_RX, L_C_RY, L_C_RZ);
+    // try{
+    //     listener.waitForTransform(cameraFrame, laser_msg->header.frame_id, laser_msg->header.stamp, ros::Duration(0.05));
+    //     listener.lookupTransform(cameraFrame, laser_msg->header.frame_id, laser_msg->header.stamp, transform);
+    // } 
+    // catch (tf::TransformException ex){
+    //     ROS_ERROR("Error while getting transform from `%s` to %s: %s", laser_msg->header.frame_id.c_str(), cameraFrame.c_str(), ex.what());
+    //     return;
+    // }
+    // Eigen::Affine3d transOffsetD;
+    // tf::transformTFToEigen(transform, transOffsetD);
+    // Eigen::Affine3f transOffset = transOffsetD.cast<float>();
+    pcl::transformPointCloud(*laser_cloud_in, *laser_cloud_offset, transOffset);
+    *laser_cloud_in = *laser_cloud_offset;
 
     // 5. transform new cloud into global odom frame
     pcl::PointCloud<PointType>::Ptr laser_cloud_global(new pcl::PointCloud<PointType>());
