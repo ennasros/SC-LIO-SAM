@@ -8,6 +8,7 @@
 
 #include <opencv2/opencv.hpp>
 #include <eigen3/Eigen/Dense>
+#include <tf_conversions/tf_eigen.h>
 
 #include "camera_models/CameraFactory.h"
 #include "camera_models/CataCamera.h"
@@ -94,11 +95,13 @@ public:
             pointsArray[i].resize(num_bins);
     }
 
-    sensor_msgs::ChannelFloat32 get_depth(const ros::Time& stamp_cur, const cv::Mat& imageCur, 
+    sensor_msgs::ChannelFloat32 get_depth(const std_msgs::Header& header, const cv::Mat& imageCur, 
                                           const pcl::PointCloud<PointType>::Ptr& depthCloud,
                                           const camodocal::CameraPtr& camera_model ,
                                           const vector<geometry_msgs::Point32>& features_2d)
     {
+        ros::Time stamp_cur = header.stamp;
+
         // 0.1 initialize depth for return
         sensor_msgs::ChannelFloat32 depth_of_point;
         depth_of_point.name = "depth";
@@ -110,11 +113,11 @@ public:
 
         // 0.3 look up transform at current image time
         try{
-            listener.waitForTransform("vins_world", "vins_body_ros", stamp_cur, ros::Duration(0.01));
-            listener.lookupTransform("vins_world", "vins_body_ros", stamp_cur, transform);
+            listener.waitForTransform("odom", header.frame_id, stamp_cur, ros::Duration(0.03));
+            listener.lookupTransform("odom", header.frame_id, stamp_cur, transform);
         } 
         catch (tf::TransformException ex){
-            // ROS_ERROR("image no tf");
+            ROS_ERROR("Error while getting transform from `%s` to `odom` (120 feature_tracker.h)", header.frame_id.c_str());
             return depth_of_point;
         }
 
@@ -130,6 +133,7 @@ public:
         pcl::PointCloud<PointType>::Ptr depth_cloud_local(new pcl::PointCloud<PointType>());
         pcl::transformPointCloud(*depthCloud, *depth_cloud_local, transNow.inverse());
 
+        
         // 0.5 project undistorted normalized (z) 2d features onto a unit sphere
         pcl::PointCloud<PointType>::Ptr features_3d_sphere(new pcl::PointCloud<PointType>());
         for (int i = 0; i < (int)features_2d.size(); ++i)
@@ -139,9 +143,12 @@ public:
             feature_cur.normalize(); 
             // convert to ROS standard
             PointType p;
-            p.x =  feature_cur(2);
-            p.y = -feature_cur(0);
-            p.z = -feature_cur(1);
+            // p.x =  feature_cur(2);
+            // p.y = -feature_cur(0);
+            // p.z = -feature_cur(1);
+            p.x =  feature_cur(0);
+            p.y = feature_cur(1);
+            p.z = feature_cur(2);
             p.intensity = -1; // intensity will be used to save depth
             features_3d_sphere->push_back(p);
         }
@@ -154,13 +161,13 @@ public:
         {
             PointType p = depth_cloud_local->points[i];
             // filter points not in camera view
-            if (p.x < 0 || abs(p.y / p.x) > 10 || abs(p.z / p.x) > 10)
+            if (p.z < 0 || abs(p.y / p.z) > 10 || abs(p.x / p.z) > 10)
                 continue;
             // find row id in range image
-            float row_angle = atan2(p.z, sqrt(p.x * p.x + p.y * p.y)) * 180.0 / M_PI + 90.0; // degrees, bottom -> up, 0 -> 360
+            float row_angle = atan2(-p.y, sqrt(p.x * p.x + p.z * p.z)) * 180.0 / M_PI + 90.0; // degrees, bottom -> up, 0 -> 360
             int row_id = round(row_angle / bin_res);
             // find column id in range image
-            float col_angle = atan2(p.x, p.y) * 180.0 / M_PI; // degrees, left -> right, 0 -> 360
+            float col_angle = atan2(p.z, p.x) * 180.0 / M_PI; // degrees, left -> right, 0 -> 360
             int col_id = round(col_angle / bin_res);
             // id may be out of boundary
             if (row_id < 0 || row_id >= num_bins || col_id < 0 || col_id >= num_bins)
@@ -185,7 +192,7 @@ public:
             }
         }
         *depth_cloud_local = *depth_cloud_local_filter2;
-        publishCloud(&pub_depth_cloud, depth_cloud_local, stamp_cur, "vins_body_ros");
+        publishCloud(&pub_depth_cloud, depth_cloud_local, stamp_cur, header.frame_id);
 
         // 5. project depth cloud onto a unit sphere
         pcl::PointCloud<PointType>::Ptr depth_cloud_unit_sphere(new pcl::PointCloud<PointType>());
@@ -259,7 +266,7 @@ public:
         }
 
         // visualize features in cartesian 3d space (including the feature without depth (default 1))
-        publishCloud(&pub_depth_feature, features_3d_sphere, stamp_cur, "vins_body_ros");
+        publishCloud(&pub_depth_feature, features_3d_sphere, stamp_cur, header.frame_id);
         
         // update depth value for return
         for (int i = 0; i < (int)features_3d_sphere->size(); ++i)
@@ -277,9 +284,14 @@ public:
             for (int i = 0; i < (int)depth_cloud_local->size(); ++i)
             {
                 // convert points from 3D to 2D
-                Eigen::Vector3d p_3d(-depth_cloud_local->points[i].y,
-                                     -depth_cloud_local->points[i].z,
-                                      depth_cloud_local->points[i].x);
+                // Eigen::Vector3d p_3d(-depth_cloud_local->points[i].y,
+                //                      -depth_cloud_local->points[i].z,
+                //                       depth_cloud_local->points[i].x);
+
+                Eigen::Vector3d p_3d(depth_cloud_local->points[i].x,
+                                     depth_cloud_local->points[i].y,
+                                     depth_cloud_local->points[i].z);
+
                 Eigen::Vector2d p_2d;
                 camera_model->spaceToPlane(p_3d, p_2d);
                 
