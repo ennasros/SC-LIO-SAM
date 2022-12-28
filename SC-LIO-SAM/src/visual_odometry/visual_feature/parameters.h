@@ -68,6 +68,7 @@ extern std::string PROJECT_NAME;
 extern std::string IMAGE_TOPIC;
 extern std::string IMU_TOPIC;
 extern std::string POINT_CLOUD_TOPIC;
+extern std::string CAMERA_FRAME;
 
 extern int USE_LIDAR;
 extern int LIDAR_SKIP;

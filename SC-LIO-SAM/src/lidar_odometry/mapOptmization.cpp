@@ -103,6 +103,9 @@ public:
     ros::Publisher pubKeyPoses;
     ros::Publisher pubPath;
 
+    ros::Publisher pubVisualOdometryGlobal;
+    ros::Publisher pubVisualOdometryIncremental;
+
     ros::Publisher pubHistoryKeyFrames;
     ros::Publisher pubIcpKeyFrames;
     ros::Publisher pubRecentKeyFrames;
@@ -113,6 +116,7 @@ public:
     ros::Subscriber subCloud;
     ros::Subscriber subGPS;
     ros::Subscriber subLoop;
+    ros::Subscriber subImage;
 
     std::deque<nav_msgs::Odometry> gpsQueue;
     lio_sam::cloud_info cloudInfo;
@@ -223,11 +227,16 @@ public:
         pubLaserOdometryGlobal      = nh.advertise<nav_msgs::Odometry> ("lio_sam/mapping/odometry", 1);
         pubLaserOdometryIncremental = nh.advertise<nav_msgs::Odometry> ("lio_sam/mapping/odometry_incremental", 1);
         pubPath                     = nh.advertise<nav_msgs::Path>("lio_sam/mapping/path", 1);
+        // @ennasros -- add pubs for vision-based odometry
+        pubVisualOdometryGlobal      = nh.advertise<nav_msgs::Odometry> ("lio_sam/mapping/visual_odometry", 1);
+        pubVisualOdometryIncremental = nh.advertise<nav_msgs::Odometry> ("lio_sam/mapping/visual_odometry_incremental", 1);
 
         subCloud = nh.subscribe<lio_sam::cloud_info>("lio_sam/feature/cloud_info", 1, &mapOptimization::laserCloudInfoHandler, this, ros::TransportHints().tcpNoDelay());
         subGPS   = nh.subscribe<nav_msgs::Odometry> (gpsTopic, 200, &mapOptimization::gpsHandler, this, ros::TransportHints().tcpNoDelay());
         subLoop  = nh.subscribe<std_msgs::Float64MultiArray>("lio_loop/loop_closure_detection", 1, &mapOptimization::loopInfoHandler, this, ros::TransportHints().tcpNoDelay());
-
+        // @ennasros -- subscribe to vision feature tracking/possibly need to make a new message
+        subImage = nh.subscribe<const sensor_msgs::PointCloud2ConstPtr&>("lio_sam/vins/depth/depth_feature", 1, &mapOptimization::imageFeatureHandler, this, ros::TransportHints().tcpNoDelay());
+        
         pubHistoryKeyFrames   = nh.advertise<sensor_msgs::PointCloud2>("lio_sam/mapping/icp_loop_closure_history_cloud", 1);
         pubIcpKeyFrames       = nh.advertise<sensor_msgs::PointCloud2>("lio_sam/mapping/icp_loop_closure_corrected_cloud", 1);
         pubLoopConstraintEdge = nh.advertise<visualization_msgs::MarkerArray>("/lio_sam/mapping/loop_closure_constraints", 1);
@@ -236,7 +245,7 @@ public:
         pubRecentKeyFrame     = nh.advertise<sensor_msgs::PointCloud2>("lio_sam/mapping/cloud_registered", 1);
         pubCloudRegisteredRaw = nh.advertise<sensor_msgs::PointCloud2>("lio_sam/mapping/cloud_registered_raw", 1);
 
-        const float kSCFilterSize = 0.5; // giseop
+        const float kSCFilterSize = 0.1; // giseop
         downSizeFilterSC.setLeafSize(kSCFilterSize, kSCFilterSize, kSCFilterSize); // giseop
 
         downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
@@ -395,6 +404,12 @@ public:
 
             publishFrames();
         }
+    }
+
+    // TODO: @ennasros -- add image feature handler and publish vision-based odometry
+    void imageFeatureHandler(const sensor_msgs::PointCloud2ConstPtr &feature_msg)
+    {
+        ROS_INFO("Received visual features");
     }
 
     void gpsHandler(const nav_msgs::Odometry::ConstPtr& gpsMsg)

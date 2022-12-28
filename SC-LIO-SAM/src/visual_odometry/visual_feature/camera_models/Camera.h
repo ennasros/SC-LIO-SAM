@@ -18,6 +18,7 @@ public:
         KANNALA_BRANDT,
         MEI,
         PINHOLE,
+        OUSTER,
         SCARAMUZZA
     };
 

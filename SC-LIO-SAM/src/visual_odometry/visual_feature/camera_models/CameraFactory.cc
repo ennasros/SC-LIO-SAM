@@ -7,6 +7,7 @@
 #include "EquidistantCamera.h"
 #include "PinholeCamera.h"
 #include "ScaramuzzaCamera.h"
+#include "OusterCamera.h"
 
 #include "ceres/ceres.h"
 
@@ -54,6 +55,17 @@ CameraFactory::generateCamera(Camera::ModelType modelType,
         PinholeCameraPtr camera(new PinholeCamera);
 
         PinholeCamera::Parameters params = camera->getParameters();
+        params.cameraName() = cameraName;
+        params.imageWidth() = imageSize.width;
+        params.imageHeight() = imageSize.height;
+        camera->setParameters(params);
+        return camera;
+    }
+    case Camera::OUSTER:
+    {
+        OusterCameraPtr camera(new OusterCamera);
+
+        OusterCamera::Parameters params = camera->getParameters();
         params.cameraName() = cameraName;
         params.imageWidth() = imageSize.width;
         params.imageHeight() = imageSize.height;
@@ -118,6 +130,10 @@ CameraFactory::generateCameraFromYamlFile(const std::string& filename)
         {
             modelType = Camera::PINHOLE;
         }
+        else if (boost::iequals(sModelType, "ouster"))
+        {
+            modelType = Camera::OUSTER;
+        }
         else
         {
             std::cerr << "# ERROR: Unknown camera model: " << sModelType << std::endl;
@@ -141,6 +157,15 @@ CameraFactory::generateCameraFromYamlFile(const std::string& filename)
         PinholeCameraPtr camera(new PinholeCamera);
 
         PinholeCamera::Parameters params = camera->getParameters();
+        params.readFromYamlFile(filename);
+        camera->setParameters(params);
+        return camera;
+    }
+    case Camera::OUSTER:
+    {
+        OusterCameraPtr camera(new OusterCamera);
+
+        OusterCamera::Parameters params = camera->getParameters();
         params.readFromYamlFile(filename);
         camera->setParameters(params);
         return camera;

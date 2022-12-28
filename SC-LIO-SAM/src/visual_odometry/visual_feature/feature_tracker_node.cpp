@@ -31,13 +31,13 @@ bool init_pub = 0;
 
 std::string cameraFrame;
 
-void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
+void img_callback(const sensor_msgs::ImageConstPtr &img_msg, const sensor_msgs::PointCloud2ConstPtr &laser_msg)
 {
     double cur_img_time = img_msg->header.stamp.toSec();
 
     if(first_image_flag)
     {
-        cameraFrame = img_msg->header.frame_id;
+        cameraFrame = "os_sensor";//img_msg->header.frame_id;
         first_image_flag = false;
         first_image_time = cur_img_time;
         last_image_time = cur_img_time;
@@ -168,14 +168,23 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
         feature_points->channels.push_back(velocity_x_of_point);
         feature_points->channels.push_back(velocity_y_of_point);
 
+        // convert laser cloud message to pcl
+        ROS_DEBUG("laser_msg_pts: %u", laser_msg->width*laser_msg->height);
+        pcl::PointCloud<PointType>::Ptr laser_cloud_in(new pcl::PointCloud<PointType>());
+        pcl::fromROSMsg(*laser_msg, *laser_cloud_in);
+
         // get feature depth from lidar point cloud
-        pcl::PointCloud<PointType>::Ptr depth_cloud_temp(new pcl::PointCloud<PointType>());
-        mtx_lidar.lock();
-        *depth_cloud_temp = *depthCloud;
-        mtx_lidar.unlock();
+        // pcl::PointCloud<PointType>::Ptr depth_cloud_temp(new pcl::PointCloud<PointType>());
+        // mtx_lidar.lock();
+        // *depth_cloud_temp = *depthCloud;
+        // *depth_cloud_temp = *laser_cloud_in;
+        // mtx_lidar.unlock();
 
         // sensor_msgs::ChannelFloat32 depth_of_points = depthRegister->get_depth(img_msg->header.stamp, show_img, depth_cloud_temp, trackerData[0].m_camera, feature_points->points);
-        sensor_msgs::ChannelFloat32 depth_of_points = depthRegister->get_depth(img_msg->header, show_img, depth_cloud_temp, trackerData[0].m_camera, feature_points->points);
+        // sensor_msgs::ChannelFloat32 depth_of_points = depthRegister->get_depth(img_msg->header, show_img, depth_cloud_temp, trackerData[0].m_camera, feature_points->points);
+        
+        
+        sensor_msgs::ChannelFloat32 depth_of_points = depthRegister->os_get_depth(img_msg->header, show_img, laser_cloud_in, trackerData[0].m_camera, feature_points->points);
         feature_points->channels.push_back(depth_of_points);
         
         // skip the first image; since no optical speed on frist image
@@ -222,7 +231,6 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
         }
     }
 }
-
 
 void lidar_callback(const sensor_msgs::PointCloud2ConstPtr& laser_msg)
 {
@@ -328,6 +336,13 @@ void lidar_callback(const sensor_msgs::PointCloud2ConstPtr& laser_msg)
     *depthCloud = *depthCloudDS;
 }
 
+void rgbd_callback(const sensor_msgs::ImageConstPtr &img_msg, const sensor_msgs::PointCloud2ConstPtr &laser_msg)
+{
+    // ROS_DEBUG("starting rgbd_callback()");
+    // lidar_callback(laser_msg);
+    img_callback(img_msg, laser_msg);
+}
+
 int main(int argc, char **argv)
 {
     // initialize ROS node
@@ -360,11 +375,20 @@ int main(int argc, char **argv)
     // initialize depthRegister (after readParameters())
     depthRegister = new DepthRegister(n);
     
+    // use message filter subscribers to generate ouster  RGBD image
+    message_filters::Subscriber<sensor_msgs::Image> sub_img(n, IMAGE_TOPIC, 1);
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_lidar(n, POINT_CLOUD_TOPIC, 1);
+
+
+    // time sync filter of topics
+    message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::PointCloud2> sync(sub_img, sub_lidar, 10);
+    sync.registerCallback(boost::bind(&rgbd_callback, _1, _2));
+
     // subscriber to image and lidar
-    ros::Subscriber sub_img   = n.subscribe(IMAGE_TOPIC,       5,    img_callback);
-    ros::Subscriber sub_lidar = n.subscribe(POINT_CLOUD_TOPIC, 5,    lidar_callback);
-    if (!USE_LIDAR)
-        sub_lidar.shutdown();
+    // ros::Subscriber sub_img   = n.subscribe(IMAGE_TOPIC,       5,    img_callback);
+    // ros::Subscriber sub_lidar = n.subscribe(POINT_CLOUD_TOPIC, 5,    lidar_callback);
+    // if (!USE_LIDAR)
+    //     sub_lidar.shutdown();
 
     // messages to vins estimator
     pub_feature = n.advertise<sensor_msgs::PointCloud>(PROJECT_NAME + "/vins/feature/feature",     5);

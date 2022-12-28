@@ -7,11 +7,13 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g -pthread")
 
 find_package(catkin REQUIRED COMPONENTS
+  # ROS  
   tf
   tf_conversions
   roscpp
   rospy
   roslib
+  message_filters
   cv_bridge
   # pcl library
   pcl_conversions

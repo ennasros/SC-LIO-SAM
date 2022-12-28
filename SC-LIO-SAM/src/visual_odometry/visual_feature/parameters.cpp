@@ -4,6 +4,7 @@ std::string IMAGE_TOPIC;
 std::string IMU_TOPIC;
 std::string POINT_CLOUD_TOPIC;
 std::string PROJECT_NAME;
+std::string CAMERA_FRAME;
 
 std::vector<std::string> CAM_NAMES;
 std::string FISHEYE_MASK;
@@ -48,6 +49,7 @@ void readParameters(ros::NodeHandle &n)
 
     // sensor topics
     fsSettings["image_topic"]       >> IMAGE_TOPIC;
+    fsSettings["camera_frame"]      >> CAMERA_FRAME;
     fsSettings["imu_topic"]         >> IMU_TOPIC;
     fsSettings["point_cloud_topic"] >> POINT_CLOUD_TOPIC;
 
