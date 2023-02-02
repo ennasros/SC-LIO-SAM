@@ -2,8 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 project(lio_sam)
 
 set(CMAKE_BUILD_TYPE "Release")
-set(CMAKE_CXX_FLAGS "-std=c++14")
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g -pthread")
 
 find_package(catkin REQUIRED COMPONENTS
@@ -96,3 +95,24 @@ target_link_libraries(${PROJECT_NAME}_mapOptmization ${catkin_LIBRARIES} ${PCL_L
 # IMU Preintegration
 add_executable(${PROJECT_NAME}_imuPreintegration src/imuPreintegration.cpp)
 target_link_libraries(${PROJECT_NAME}_imuPreintegration ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} gtsam)
+
+# LTSlam
+#ltslam 
+add_executable(${PROJECT_NAME}_ltslam src/ltslam/main.cpp
+  src/ltslam/utility.cpp 
+  src/ltslam/RosParamServer.cpp
+  src/ltslam/Session.cpp
+  src/ltslam/LTslam.cpp
+  src/ltslam/Scancontext.cpp
+)
+
+add_dependencies(${PROJECT_NAME}_ltslam ${catkin_EXPORTED_TARGETS})
+target_compile_options(${PROJECT_NAME}_ltslam PRIVATE ${OpenMP_CXX_FLAGS})
+target_link_libraries(${PROJECT_NAME}_ltslam 
+  ${catkin_LIBRARIES} 
+  ${PCL_LIBRARIES} 
+  ${OpenCV_LIBRARIES}
+  ${OpenMP_CXX_FLAGS}
+  gtsam
+  stdc++fs
+)
