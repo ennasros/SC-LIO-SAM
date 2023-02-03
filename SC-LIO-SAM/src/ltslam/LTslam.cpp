@@ -70,6 +70,14 @@ void LTslam::writeAllSessionsTrajectories(std::string _postfix = "")
 LTslam::LTslam()
 : poseOrigin(gtsam::Pose3(gtsam::Rot3::RzRyRx(0.0, 0.0, 0.0), gtsam::Point3(0.0, 0.0, 0.0))) 
 {
+    // initialize
+    initOptimizer();
+    initNoiseConstants();
+    // load previous sessions
+    loadPrevSession();
+    addAllSessionsToGraph();
+    // subscribe to mapping data
+    subCloud = nh.subscribe<lio_sam::cloud_info>("lio_sam/feature/cloud_info", 1, &LTslam::laserCloudInfoHandler, this, ros::TransportHints().tcpNoDelay());
 } // ctor
 
 
@@ -78,11 +86,8 @@ LTslam::~LTslam() { }
 
 void LTslam::run( void )
 {
-    initOptimizer();
-    initNoiseConstants();
 
-    loadAllSessions();
-    addAllSessionsToGraph();
+    // loadAllSessions();
 
     optimizeMultisesseionGraph(true); // optimize the graph with existing edges 
     writeAllSessionsTrajectories(std::string("bfr_intersession_loops"));
@@ -338,6 +343,26 @@ void LTslam::detectInterSessionRSloops() // using ScanContext
     
 } // detectInterSessionRSloops
 
+void LTslam::laserCloudInfoHandler(const lio_sam::cloud_infoConstPtr& msgIn)
+{
+    
+}
+
+void LTslam::keyframeHandler(const sensor_msgs::PointCloud2ConstPtr& keyframe)
+{
+    // detect loop closure using sc?
+    auto& prev_scManager = prev_session_.scManager;
+    std::vector<float> curr_node_key; // = prev_scManager.polarcontext_invkeys_mat_.at(source_node_idx);
+    Eigen::MatrixXd curr_node_scd; // = prev_scManager.polarcontexts_.at(source_node_idx);
+
+    for (int prev_node_idx=0; prev_node_idx < int(prev_scManager.polarcontexts_.size()); prev_node_idx++)
+    {
+        // auto detectResult = prev_scManager.detectLoopClosureIDBetweenSession(curr_node_key, curr_node_scd); // first: nn index, second: yaw diff 
+        
+        // int loop_idx_source_session = prev_node_idx;
+    }
+
+} // keyframeHandler
 
 void LTslam::addAllSessionsToGraph()
 {
@@ -471,7 +496,7 @@ void LTslam::findNearestRSLoopsTargetNodeIdx() // based-on information gain
             if( poseDistance(query_pose_central_coord, target_pose) < 10.0 ) // 10 is a hard-coding for fast test
             {
                 target_node_idxes_within_ball.push_back(target_node_idx);
-                // cout << "(all) RS pair detected: " << target_node_idx << " <-> " << source_node_idx << endl;    
+                // cout << "(all) RS pair detected: " << target_node_idx << " <-> " << prev_node_idx << endl;    
             }
         }
 
@@ -492,7 +517,7 @@ void LTslam::findNearestRSLoopsTargetNodeIdx() // based-on information gain
             }
         }
 
-        // cout << "RS pair detected: " << selected_near_target_node_idx << " <-> " << source_node_idx << endl;    
+        // cout << "RS pair detected: " << selected_near_target_node_idx << " <-> " << prev_node_idx << endl;    
         // cout << "info gain: " << max_information_gain << endl;    
              
         validRSLoopIdxPairs.emplace_back(std::pair<int, int>{selected_near_target_node_idx, source_node_idx});
@@ -622,38 +647,46 @@ void LTslam::addSessionToCentralGraph(const Session& _sess)
 }
 
 
-void LTslam::loadAllSessions() 
+// void LTslam::loadAllSessions() 
+// {
+//     // pose 
+//     ROS_INFO_STREAM("\033[1;32m Load sessions' pose dasa from: " << sessions_dir_ << "\033[0m");
+//     for(auto& _session_entry : fs::directory_iterator(sessions_dir_)) 
+//     {
+//         std::string session_name = _session_entry.path().filename();        
+//         if( !isTwoStringSame(session_name, central_sess_name_) & !isTwoStringSame(session_name, query_sess_name_) ) {
+//             continue; // jan. 2021. currently designed for two-session ver. (TODO: be generalized for N-session co-optimization)
+//         }
+
+//         // save a session (read graph txt flie and load nodes and edges internally)
+//         int session_idx;
+//         if(isTwoStringSame(session_name, central_sess_name_))
+//             session_idx = target_sess_idx;
+//         else
+//             session_idx = source_sess_idx;
+
+//         std::string session_dir_path = _session_entry.path();
+
+//         // sessions_.emplace_back(Session(session_idx, session_name, session_dir_path, isTwoStringSame(session_name, central_sess_name_)));
+//         sessions_.insert( std::make_pair(session_idx, 
+//                                          Session(session_idx, session_name, session_dir_path, isTwoStringSame(session_name, central_sess_name_))) );
+
+//         // LTslam::num_sessions++; // incr the global index // TODO: make this private and provide incrSessionIdx
+//     }
+
+//     std::cout << std::boolalpha;   
+//     ROS_INFO_STREAM("\033[1;32m Total : " << sessions_.size() << " sessions are loaded.\033[0m");
+//     std::for_each( sessions_.begin(), sessions_.end(), [](auto& _sess_pair) { 
+//                 cout << " — " << _sess_pair.second.name_ << " (is central: " << _sess_pair.second.is_base_session_ << ")" << endl; 
+//                 } );
+
+// } // loadSession
+
+void LTslam::loadPrevSession()
 {
-    // pose 
-    ROS_INFO_STREAM("\033[1;32m Load sessions' pose dasa from: " << sessions_dir_ << "\033[0m");
-    for(auto& _session_entry : fs::directory_iterator(sessions_dir_)) 
-    {
-        std::string session_name = _session_entry.path().filename();        
-        if( !isTwoStringSame(session_name, central_sess_name_) & !isTwoStringSame(session_name, query_sess_name_) ) {
-            continue; // jan. 2021. currently designed for two-session ver. (TODO: be generalized for N-session co-optimization)
-        }
-
-        // save a session (read graph txt flie and load nodes and edges internally)
-        int session_idx;
-        if(isTwoStringSame(session_name, central_sess_name_))
-            session_idx = target_sess_idx;
-        else
-            session_idx = source_sess_idx;
-
-        std::string session_dir_path = _session_entry.path();
-
-        // sessions_.emplace_back(Session(session_idx, session_name, session_dir_path, isTwoStringSame(session_name, central_sess_name_)));
-        sessions_.insert( std::make_pair(session_idx, 
-                                         Session(session_idx, session_name, session_dir_path, isTwoStringSame(session_name, central_sess_name_))) );
-
-        // LTslam::num_sessions++; // incr the global index // TODO: make this private and provide incrSessionIdx
-    }
-
+    ROS_INFO_STREAM("\033[1;32m Load previous session pose dasa from: " << previous_session_dir_ << "\033[0m");
+    prev_session_ = Session(1, "previous_session",previous_session_dir_, true);
     std::cout << std::boolalpha;   
-    ROS_INFO_STREAM("\033[1;32m Total : " << sessions_.size() << " sessions are loaded.\033[0m");
-    std::for_each( sessions_.begin(), sessions_.end(), [](auto& _sess_pair) { 
-                cout << " — " << _sess_pair.second.name_ << " (is central: " << _sess_pair.second.is_base_session_ << ")" << endl; 
-                } );
-
-} // loadSession
+    ROS_INFO_STREAM("\033[1;32m Succsessfully read previous session\033[0m");
+} // loadPrevSession
 

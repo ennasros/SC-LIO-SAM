@@ -22,10 +22,10 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl_conversions/pcl_conversions.h>
 
-#include "nanoflann.hpp"
-#include "KDTreeVectorOfVectorsAdaptor.h"
+#include "ltslam/nanoflann.hpp"
+#include "ltslam/KDTreeVectorOfVectorsAdaptor.h"
 
-#include "tictoc.h"
+#include "ltslam/tictoc.h"
 
 using namespace Eigen;
 using namespace nanoflann;
@@ -72,7 +72,11 @@ public:
     void makeAndSaveScancontextAndKeys( pcl::PointCloud<SCPointType> & _scan_down );
     std::pair<int, float> detectLoopClosureID( void ); // int: nearest node index, float: relative yaw  
 
-    // for ltmapper 
+    // for ltslam 
+    // User-side API for multi-session
+    void saveScancontextAndKeys( Eigen::MatrixXd _scd );
+    std::pair<int, float> detectLoopClosureIDBetweenSession ( std::vector<float>& curr_key,  Eigen::MatrixXd& curr_desc);
+
     const Eigen::MatrixXd& getConstRefRecentSCD(void);
 
 public:
@@ -108,6 +112,9 @@ public:
     KeyMat polarcontext_invkeys_mat_;
     KeyMat polarcontext_invkeys_to_search_;
     std::unique_ptr<InvKeyTree> polarcontext_tree_;
+
+    bool is_tree_batch_made = false;
+    std::unique_ptr<InvKeyTree> polarcontext_tree_batch_;
 
 }; // SCManager
 

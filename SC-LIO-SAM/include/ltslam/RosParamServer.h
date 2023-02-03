@@ -14,6 +14,7 @@ class RosParamServer: public RosNodeHandle
 public:
     ros::NodeHandle & nh;
 
+    std::string previous_session_dir_;
     std::string sessions_dir_;
     std::string central_sess_name_;
     std::string query_sess_name_;

@@ -4,6 +4,8 @@
 RosParamServer::RosParamServer()
 : nh(nh_super)
 {
+    nh.param<std::string>("ltslam/previous_session_dir", previous_session_dir_, "/");
+    
     nh.param<std::string>("ltslam/sessions_dir", sessions_dir_, "/");
     nh.param<std::string>("ltslam/central_sess_name", central_sess_name_, "01");
     nh.param<std::string>("ltslam/query_sess_name", query_sess_name_, "02");

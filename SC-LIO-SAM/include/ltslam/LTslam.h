@@ -1,5 +1,7 @@
 #pragma once
 
+#include "lio_sam/cloud_info.h"
+
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/nonlinear/Marginals.h>
@@ -33,7 +35,10 @@ public:
     // const static inline int kSessionStartIdxOffset = 1000000; // int max 2147483647 so ok.
 
     Sessions sessions_;
+    Session prev_session_;
     SessionsDict sessions_dict_;
+
+    ros::Subscriber subCloud;
 
     // Pose graph 
     
@@ -66,12 +71,16 @@ public:
     LTslam();
     ~LTslam();
 
+    void keyframeHandler(const sensor_msgs::PointCloud2ConstPtr& keyframe);
+    void laserCloudInfoHandler(const lio_sam::cloud_infoConstPtr& msgIn);
+
     void run( void );
 
     void initNoiseConstants();
     void initOptimizer();
 
-    void loadAllSessions();
+    // void loadAllSessions();
+    void loadPrevSession();
 
     friend int genGlobalNodeIdx(const int&, const int&);
     friend int genAnchorNodeIdx(const int&);

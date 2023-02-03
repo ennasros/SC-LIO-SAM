@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ltslam/utility.h"
-#include "ltslam/Scancontext.h"
+#include "Scancontext.h"
 
 using namespace LTslamParam;
 
@@ -65,6 +65,23 @@ public:
 
     void allocateMemory();
 
+    // copy assignment operator
+    Session& operator=(Session other)
+    {
+        index_ = other.index_;
+        name_ = other.name_;
+        session_dir_path_ = other.session_dir_path_;
+        is_base_session_ = other.is_base_session_;
+
+        allocateMemory();
+        loadSessionGraph();
+        loadSessionScanContextDescriptors();
+        loadSessionKeyframePointclouds();
+        const float kICPFilterSize = 0.3; // TODO move to yaml 
+        downSizeFilterICP.setLeafSize(kICPFilterSize, kICPFilterSize, kICPFilterSize);
+
+        return *this;
+    }
 }; // Session
 
 

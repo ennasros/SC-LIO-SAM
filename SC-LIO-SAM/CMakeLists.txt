@@ -96,17 +96,15 @@ target_link_libraries(${PROJECT_NAME}_mapOptmization ${catkin_LIBRARIES} ${PCL_L
 add_executable(${PROJECT_NAME}_imuPreintegration src/imuPreintegration.cpp)
 target_link_libraries(${PROJECT_NAME}_imuPreintegration ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} gtsam)
 
-# LTSlam
 #ltslam 
 add_executable(${PROJECT_NAME}_ltslam src/ltslam/main.cpp
   src/ltslam/utility.cpp 
   src/ltslam/RosParamServer.cpp
   src/ltslam/Session.cpp
   src/ltslam/LTslam.cpp
-  src/ltslam/Scancontext.cpp
+  src/Scancontext.cpp
 )
-
-add_dependencies(${PROJECT_NAME}_ltslam ${catkin_EXPORTED_TARGETS})
+add_dependencies(${PROJECT_NAME}_ltslam ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
 target_compile_options(${PROJECT_NAME}_ltslam PRIVATE ${OpenMP_CXX_FLAGS})
 target_link_libraries(${PROJECT_NAME}_ltslam 
   ${catkin_LIBRARIES} 
