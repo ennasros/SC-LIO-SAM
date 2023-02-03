@@ -91,6 +91,8 @@ public:
 
     void detectInterSessionSCloops();
     void detectInterSessionRSloops();
+    int detectPreviousSessionSCloops(pcl::PointCloud<PointType>::Ptr laserCloudRawDS);
+
     void addSCloops();
     std::vector<std::pair<int, int>> equisampleElements(const std::vector<std::pair<int, int>>& _input_pair, float _gap, int _num);
 
@@ -106,6 +108,9 @@ public:
 
     std::optional<gtsam::Pose3> doICPVirtualRelative(Session& target_sess, Session& source_sess, 
                         const int& loop_idx_target_session, const int& loop_idx_source_session);
+    std::optional<gtsam::Pose3> doPreviousICPVirtualRelative(
+                        pcl::PointCloud<PointType>::Ptr cureKeyframeCloud, 
+                        const int& loop_idx_prev_session);
     std::optional<gtsam::Pose3> doICPGlobalRelative(Session& target_sess, Session& source_sess, 
                         const int& loop_idx_target_session, const int& loop_idx_source_session);
 

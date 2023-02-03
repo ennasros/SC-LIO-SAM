@@ -29,6 +29,10 @@ public:
 
     float loopFitnessScoreThreshold;
 
+    float scancontextLeafSize;
+    float mappingCornerLeafSize;
+    float mappingSurfLeafSize;
+
 public:
     RosParamServer();
 

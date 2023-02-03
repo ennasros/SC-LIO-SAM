@@ -24,6 +24,11 @@ RosParamServer::RosParamServer()
 
     nh.param<float>("ltslam/loopFitnessScoreThreshold", loopFitnessScoreThreshold, 0.5);
 
+
+    nh.param<float>("ltslam/scancontextLeafSize", scancontextLeafSize, 0.3);
+    nh.param<float>("ltslam/mappingCornerLeafSize", mappingCornerLeafSize, 0.2);
+    nh.param<float>("ltslam/mappingSurfLeafSize", mappingSurfLeafSize, 0.2);
+
     usleep(100);
 } // ctor RosParamServer
 

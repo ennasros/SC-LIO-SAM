@@ -76,6 +76,9 @@ LTslam::LTslam()
     // load previous sessions
     loadPrevSession();
     addAllSessionsToGraph();
+    // initialize optimization
+    optimizeMultisesseionGraph(true);
+
     // subscribe to mapping data
     subCloud = nh.subscribe<lio_sam::cloud_info>("lio_sam/feature/cloud_info", 1, &LTslam::laserCloudInfoHandler, this, ros::TransportHints().tcpNoDelay());
 } // ctor
@@ -86,12 +89,6 @@ LTslam::~LTslam() { }
 
 void LTslam::run( void )
 {
-
-    // loadAllSessions();
-
-    optimizeMultisesseionGraph(true); // optimize the graph with existing edges 
-    writeAllSessionsTrajectories(std::string("bfr_intersession_loops"));
-
     detectInterSessionSCloops(); // detectInterSessionRSloops was internally done while sc detection 
     addSCloops();
     optimizeMultisesseionGraph(true); // optimize the graph with existing edges + SC loop edges
@@ -246,6 +243,56 @@ std::optional<gtsam::Pose3> LTslam::doICPVirtualRelative( // for SC loop
     return poseFrom.between(poseTo);
 } // doICPVirtualRelative
 
+std::optional<gtsam::Pose3> LTslam::doPreviousICPVirtualRelative( // for SC loop
+    pcl::PointCloud<PointType>::Ptr cureKeyframeCloud, 
+    const int& loop_idx_prev_session)
+{
+    // parse pointclouds
+    mtx.lock();
+    pcl::PointCloud<PointType>::Ptr previousKeyframeCloud(new pcl::PointCloud<PointType>());
+    int historyKeyframeSearchNum = 5; // TODO move to yaml 
+    prev_session_.loopFindNearKeyframesLocalCoord(previousKeyframeCloud, loop_idx_prev_session, historyKeyframeSearchNum); 
+    mtx.unlock(); // unlock after loopFindNearKeyframesWithRespectTo because many new in the loopFindNearKeyframesWithRespectTo
+
+    // ICP Settings
+    pcl::IterativeClosestPoint<PointType, PointType> icp;
+    icp.setMaxCorrespondenceDistance(50); // giseop , use a value can cover 2*historyKeyframeSearchNum range in meter 
+    icp.setMaximumIterations(100);
+    icp.setTransformationEpsilon(1e-6);
+    icp.setEuclideanFitnessEpsilon(1e-6);
+    icp.setRANSACIterations(0);
+
+    // Align pointclouds
+    icp.setInputSource(cureKeyframeCloud);
+    icp.setInputTarget(previousKeyframeCloud);
+    pcl::PointCloud<PointType>::Ptr unused_result(new pcl::PointCloud<PointType>());
+    icp.align(*unused_result);
+
+    if (icp.hasConverged() == false || icp.getFitnessScore() > loopFitnessScoreThreshold) {
+        mtx.lock();
+        std::cout << "  [SC loop] ICP fitness test failed (" << icp.getFitnessScore() << " > " << loopFitnessScoreThreshold << "). Reject this SC loop." << std::endl;
+        mtx.unlock();
+        return std::nullopt;
+    } else {
+        mtx.lock();
+        std::cout << "  [SC loop] ICP fitness test passed (" << icp.getFitnessScore() << " < " << loopFitnessScoreThreshold << "). Add this SC loop." << std::endl;
+        mtx.unlock();
+    }
+
+    // Get pose transformation
+    float x, y, z, roll, pitch, yaw;
+    Eigen::Affine3f correctionLidarFrame;
+    correctionLidarFrame = icp.getFinalTransformation();
+    pcl::getTranslationAndEulerAngles (correctionLidarFrame, x, y, z, roll, pitch, yaw);
+    gtsam::Pose3 poseFrom = Pose3(Rot3::RzRyRx(roll, pitch, yaw), Point3(x, y, z));
+    gtsam::Pose3 poseTo = Pose3(Rot3::RzRyRx(0.0, 0.0, 0.0), Point3(0.0, 0.0, 0.0));
+
+     mtx.lock();
+    std::cout << "  [SC loop] Pose transformation " << poseFrom.between(poseTo) << std::endl;
+    mtx.unlock();
+
+    return poseFrom.between(poseTo);
+}
 
 std::optional<gtsam::Pose3> LTslam::doICPGlobalRelative( // For RS loop
     Session& target_sess, Session& source_sess, 
@@ -343,26 +390,88 @@ void LTslam::detectInterSessionRSloops() // using ScanContext
     
 } // detectInterSessionRSloops
 
-void LTslam::laserCloudInfoHandler(const lio_sam::cloud_infoConstPtr& msgIn)
+int LTslam::detectPreviousSessionSCloops(pcl::PointCloud<PointType>::Ptr laserCloudRawDS) // returns index
 {
-    
-}
-
-void LTslam::keyframeHandler(const sensor_msgs::PointCloud2ConstPtr& keyframe)
-{
-    // detect loop closure using sc?
+    // detect loop closure using scancontext manager of previous session
     auto& prev_scManager = prev_session_.scManager;
-    std::vector<float> curr_node_key; // = prev_scManager.polarcontext_invkeys_mat_.at(source_node_idx);
-    Eigen::MatrixXd curr_node_scd; // = prev_scManager.polarcontexts_.at(source_node_idx);
 
-    for (int prev_node_idx=0; prev_node_idx < int(prev_scManager.polarcontexts_.size()); prev_node_idx++)
-    {
-        // auto detectResult = prev_scManager.detectLoopClosureIDBetweenSession(curr_node_key, curr_node_scd); // first: nn index, second: yaw diff 
-        
-        // int loop_idx_source_session = prev_node_idx;
+    // get scan context description and key of current scan
+    pcl::PointCloud<PointType>::Ptr thisRawCloudKeyFrame(new pcl::PointCloud<PointType>());
+    auto curr_node_scd = prev_scManager.makeScancontext(*laserCloudRawDS); // v1 
+    auto ringkey = prev_scManager.makeRingkeyFromScancontext( curr_node_scd );
+    // auto sectorkey = prev_scManager.makeSectorkeyFromScancontext( sccurr_node_scdd );
+    std::vector<float> curr_node_key = eig2stdvec( ringkey );
+    // find best match using sc
+    SCLoopIdxPairs_.clear();
+    RSLoopIdxPairs_.clear();
+    auto detectResult = prev_scManager.detectLoopClosureIDBetweenSession(curr_node_key, curr_node_scd); // first: nn index, second: yaw diff 
+    int loop_idx_target_session = detectResult.first;
+    if(loop_idx_target_session == -1) { // TODO using NO_LOOP_FOUND rather using -1 
+        ROS_INFO_STREAM("No sc match detected for current scan");
+    } 
+    else {
+        ROS_INFO_STREAM("\033[1;32m A match was found between node at index " << loop_idx_target_session << " and current scan. \033[0m");
     }
 
-} // keyframeHandler
+    return loop_idx_target_session;    
+} // detectPreviousSessionSCloops
+
+void LTslam::laserCloudInfoHandler(const lio_sam::cloud_infoConstPtr& msgIn)
+{
+    // extract info and feature cloud
+    auto cloudInfo = *msgIn;
+    pcl::PointCloud<PointType>::Ptr laserCloudRaw;
+    pcl::PointCloud<PointType>::Ptr laserCloudCornerLast;
+    pcl::PointCloud<PointType>::Ptr laserCloudSurfLast;
+    pcl::fromROSMsg(msgIn->cloud_corner,  *laserCloudCornerLast);
+    pcl::fromROSMsg(msgIn->cloud_surface, *laserCloudSurfLast);
+    pcl::fromROSMsg(msgIn->cloud_deskewed,  *laserCloudRaw); 
+
+    // down sample clouds
+    pcl::VoxelGrid<PointType> downSizeFilterSC;
+    pcl::VoxelGrid<PointType> downSizeFilterCorner;
+    pcl::VoxelGrid<PointType> downSizeFilterSurf;
+    downSizeFilterSC.setLeafSize(scancontextLeafSize, scancontextLeafSize, scancontextLeafSize);
+    downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
+    downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
+
+    pcl::PointCloud<PointType>::Ptr laserCloudRawDS;
+    downSizeFilterSC.setInputCloud(laserCloudRaw);
+    downSizeFilterSC.filter(*laserCloudRawDS);       
+
+    pcl::PointCloud<PointType>::Ptr laserCloudCornerLastDS;
+    downSizeFilterCorner.setInputCloud(laserCloudCornerLast);
+    downSizeFilterCorner.filter(*laserCloudCornerLastDS);
+
+    pcl::PointCloud<PointType>::Ptr laserCloudSurfLastDS;
+    downSizeFilterSurf.setInputCloud(laserCloudSurfLast);
+    downSizeFilterSurf.filter(*laserCloudSurfLastDS);
+    
+     
+    int idx = detectPreviousSessionSCloops(laserCloudRawDS);
+    if (idx > -1)
+    {
+        PointTypePose pt = prev_session_.cloudKeyPoses6D->points[idx]; // get coords
+
+        // compute ICP alignment for sc match
+        doPreviousICPVirtualRelative(laserCloudRawDS, idx);
+
+        gtsam::Pose3 poseTo = pclPointTogtsamPose3(pt);
+        ROS_INFO_STREAM("\033[1;32m cloudKeyPoses6D: " << poseTo << ". Shutting down listener.\033[0m");
+        subCloud.shutdown();
+    }
+    
+
+    // addSCloops();
+    // optimizeMultisesseionGraph(true); // optimize the graph with existing edges + SC loop edges
+
+    // bool toOpt = addRSloops(); // using the optimized estimates (rough alignment using SC)
+    // optimizeMultisesseionGraph(toOpt); // optimize the graph with existing edges + SC loop edges + RS loop edges
+
+    // writeAllSessionsTrajectories(std::string("aft_intersession_loops"));
+
+} // laserCLoudHandler
+
 
 void LTslam::addAllSessionsToGraph()
 {
