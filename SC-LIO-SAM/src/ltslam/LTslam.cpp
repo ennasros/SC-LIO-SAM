@@ -418,14 +418,18 @@ int LTslam::detectPreviousSessionSCloops(pcl::PointCloud<PointType>::Ptr laserCl
 
 void LTslam::laserCloudInfoHandler(const lio_sam::cloud_infoConstPtr& msgIn)
 {
+    ROS_INFO("Received cloud info const ptr");
+
     // extract info and feature cloud
     auto cloudInfo = *msgIn;
-    pcl::PointCloud<PointType>::Ptr laserCloudRaw;
-    pcl::PointCloud<PointType>::Ptr laserCloudCornerLast;
-    pcl::PointCloud<PointType>::Ptr laserCloudSurfLast;
+    pcl::PointCloud<PointType>::Ptr laserCloudRaw(new pcl::PointCloud<PointType>());
+    pcl::PointCloud<PointType>::Ptr laserCloudCornerLast(new pcl::PointCloud<PointType>());
+    pcl::PointCloud<PointType>::Ptr laserCloudSurfLast(new pcl::PointCloud<PointType>());
     pcl::fromROSMsg(msgIn->cloud_corner,  *laserCloudCornerLast);
     pcl::fromROSMsg(msgIn->cloud_surface, *laserCloudSurfLast);
     pcl::fromROSMsg(msgIn->cloud_deskewed,  *laserCloudRaw); 
+
+    ROS_INFO("Extracted cloud info ");
 
     // down sample clouds
     pcl::VoxelGrid<PointType> downSizeFilterSC;
@@ -435,15 +439,15 @@ void LTslam::laserCloudInfoHandler(const lio_sam::cloud_infoConstPtr& msgIn)
     downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
     downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
 
-    pcl::PointCloud<PointType>::Ptr laserCloudRawDS;
+    pcl::PointCloud<PointType>::Ptr laserCloudRawDS(new pcl::PointCloud<PointType>());
     downSizeFilterSC.setInputCloud(laserCloudRaw);
     downSizeFilterSC.filter(*laserCloudRawDS);       
 
-    pcl::PointCloud<PointType>::Ptr laserCloudCornerLastDS;
+    pcl::PointCloud<PointType>::Ptr laserCloudCornerLastDS(new pcl::PointCloud<PointType>());
     downSizeFilterCorner.setInputCloud(laserCloudCornerLast);
     downSizeFilterCorner.filter(*laserCloudCornerLastDS);
 
-    pcl::PointCloud<PointType>::Ptr laserCloudSurfLastDS;
+    pcl::PointCloud<PointType>::Ptr laserCloudSurfLastDS(new pcl::PointCloud<PointType>());
     downSizeFilterSurf.setInputCloud(laserCloudSurfLast);
     downSizeFilterSurf.filter(*laserCloudSurfLastDS);
     
