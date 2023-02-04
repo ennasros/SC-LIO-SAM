@@ -70,14 +70,23 @@ void LTslam::writeAllSessionsTrajectories(std::string _postfix = "")
 LTslam::LTslam()
 : poseOrigin(gtsam::Pose3(gtsam::Rot3::RzRyRx(0.0, 0.0, 0.0), gtsam::Point3(0.0, 0.0, 0.0))) 
 {
+    // advertise publisher
+    pubPreviousCloud = nh.advertise<sensor_msgs::PointCloud2>("lt_slam/previous_cloud", 1);
+    // initialize transform
+    previous_to_current = tf::Transform(tf::createQuaternionFromRPY(0, 0, 0), tf::Vector3(0, 0, 0));
+    tfMap2Odom.sendTransform(tf::StampedTransform(previous_to_current.inverse(), ros::Time::now(), "base_link", "previous_map"));
+
     // initialize
     initOptimizer();
     initNoiseConstants();
     // load previous sessions
     loadPrevSession();
-    addAllSessionsToGraph();
+    // addAllSessionsToGraph();
     // initialize optimization
-    optimizeMultisesseionGraph(true);
+    // optimizeMultisesseionGraph(true);
+
+    // publish old map
+    publishCloud(&pubPreviousCloud, prev_session_.previousGlobalCloud, ros::Time::now(), "previous_map");
 
     // subscribe to mapping data
     subCloud = nh.subscribe<lio_sam::cloud_info>("lio_sam/feature/cloud_info", 1, &LTslam::laserCloudInfoHandler, this, ros::TransportHints().tcpNoDelay());
@@ -287,12 +296,8 @@ std::optional<gtsam::Pose3> LTslam::doPreviousICPVirtualRelative( // for SC loop
     gtsam::Pose3 poseFrom = Pose3(Rot3::RzRyRx(roll, pitch, yaw), Point3(x, y, z));
     gtsam::Pose3 poseTo = Pose3(Rot3::RzRyRx(0.0, 0.0, 0.0), Point3(0.0, 0.0, 0.0));
 
-     mtx.lock();
-    std::cout << "  [SC loop] Pose transformation " << poseFrom.between(poseTo) << std::endl;
-    mtx.unlock();
-
     return poseFrom.between(poseTo);
-}
+} // doPreviousICPVirtualRelative
 
 std::optional<gtsam::Pose3> LTslam::doICPGlobalRelative( // For RS loop
     Session& target_sess, Session& source_sess, 
@@ -352,6 +357,74 @@ std::optional<gtsam::Pose3> LTslam::doICPGlobalRelative( // For RS loop
     return poseFrom.between(poseTo);
 } // doICPGlobalRelative
 
+std::optional<gtsam::Pose3> LTslam::doPreviousICPGlobalRelative( // For RS loop
+    pcl::PointCloud<PointType>::Ptr cureKeyframeCloud, 
+    const int& loop_idx_prev_session)
+{
+    // parse pointclouds
+    mtx.lock();
+    pcl::PointCloud<PointType>::Ptr previousKeyframeCloud(new pcl::PointCloud<PointType>());
+    int historyKeyframeSearchNum = 5; // TODO move to yaml 
+    prev_session_.loopFindNearKeyframesLocalCoord(previousKeyframeCloud, loop_idx_prev_session, historyKeyframeSearchNum); 
+    mtx.unlock(); // unlock after loopFindNearKeyframesWithRespectTo because many new in the loopFindNearKeyframesWithRespectTo
+
+    // ICP Settings
+    pcl::IterativeClosestPoint<PointType, PointType> icp;
+    icp.setMaxCorrespondenceDistance(150); // giseop , use a value can cover 2*historyKeyframeSearchNum range in meter 
+    icp.setMaximumIterations(100);
+    icp.setTransformationEpsilon(1e-6);
+    icp.setEuclideanFitnessEpsilon(1e-6);
+    icp.setRANSACIterations(0);
+
+    // Align pointclouds
+    icp.setInputSource(cureKeyframeCloud);
+    icp.setInputTarget(previousKeyframeCloud);
+    pcl::PointCloud<PointType>::Ptr unused_result(new pcl::PointCloud<PointType>());
+    icp.align(*unused_result);
+ 
+    // giseop 
+    // TODO icp align with initial 
+
+    if (icp.hasConverged() == false || icp.getFitnessScore() > loopFitnessScoreThreshold) {
+        mtx.lock();
+        std::cout << "  [RS loop] ICP fitness test failed (" << icp.getFitnessScore() << " > " << loopFitnessScoreThreshold << "). Reject this RS loop." << std::endl;
+        mtx.unlock();
+        return std::nullopt;
+    } else {
+        mtx.lock();
+        std::cout << "  [RS loop] ICP fitness test passed (" << icp.getFitnessScore() << " < " << loopFitnessScoreThreshold << "). Add this RS loop." << std::endl;
+        mtx.unlock();
+    }
+
+    // Get pose transformation
+    float x, y, z, roll, pitch, yaw;
+    Eigen::Affine3f correctionLidarFrame;
+    correctionLidarFrame = icp.getFinalTransformation();
+
+    // tf::TransformListener()
+    tf::StampedTransform transform;
+    tf::TransformListener listener;
+    try{
+        listener.lookupTransform("/map", "/base_link",  
+        ros::Time(0), transform);
+    }
+        catch (tf::TransformException ex){
+        ROS_ERROR("%s",ex.what());
+        return std::nullopt;
+    }
+
+    auto pos = transform.getOrigin();
+    auto rot = transform.getRotation();
+    Eigen::Affine3d tWrong;
+    tf::transformTFToEigen(transform, tWrong);
+    // Eigen::Affine3f tWrong = pclPointToAffine3f(source_sess.cloudKeyPoses6D->points[loop_idx_source_session]);
+    Eigen::Affine3f tCorrect = correctionLidarFrame * tWrong.cast<float>();// pre-multiplying -> successive rotation about a fixed frame
+    pcl::getTranslationAndEulerAngles (tCorrect, x, y, z, roll, pitch, yaw);
+    gtsam::Pose3 poseFrom = Pose3(Rot3::RzRyRx(roll, pitch, yaw), Point3(x, y, z));
+    gtsam::Pose3 poseTo = pclPointTogtsamPose3(prev_session_.cloudKeyPoses6D->points[loop_idx_prev_session]);
+
+    return poseFrom.between(poseTo);
+} // doPreviousICPGlobalRelative
 
 void LTslam::detectInterSessionSCloops() // using ScanContext
 {
@@ -450,30 +523,34 @@ void LTslam::laserCloudInfoHandler(const lio_sam::cloud_infoConstPtr& msgIn)
     pcl::PointCloud<PointType>::Ptr laserCloudSurfLastDS(new pcl::PointCloud<PointType>());
     downSizeFilterSurf.setInputCloud(laserCloudSurfLast);
     downSizeFilterSurf.filter(*laserCloudSurfLastDS);
-    
      
     int idx = detectPreviousSessionSCloops(laserCloudRawDS);
-    if (idx > -1)
-    {
-        PointTypePose pt = prev_session_.cloudKeyPoses6D->points[idx]; // get coords
+    if (idx == -1) { return; }
 
-        // compute ICP alignment for sc match
-        doPreviousICPVirtualRelative(laserCloudRawDS, idx);
+    // get pose info of index at prev_session
+    PointTypePose pt = prev_session_.cloudKeyPoses6D->points[idx]; // get coords
+    gtsam::Pose3 poseTo = pclPointTogtsamPose3(pt);
+    ROS_INFO_STREAM("\033[1;32m cloudKeyPoses6D: " << poseTo << "\033[0m");
 
-        gtsam::Pose3 poseTo = pclPointTogtsamPose3(pt);
-        ROS_INFO_STREAM("\033[1;32m cloudKeyPoses6D: " << poseTo << ". Shutting down listener.\033[0m");
-        subCloud.shutdown();
-    }
+    // compute ICP alignments
+    // auto virtual_relative_pose_optional = doPreviousICPVirtualRelative(laserCloudRawDS, idx);
+    // auto global_relative_pose_optional = doPreviousICPGlobalRelative(laserCloudRawDS, idx);
+
+    // if (virtual_relative_pose_optional.has_value())
+    // {
+    //     ROS_INFO_STREAM("\033[1;32m virtual_relative_pose_optional: " << std::endl << virtual_relative_pose_optional.value() << "\033[0m");
+    // }
+    // if (global_relative_pose_optional.has_value())
+    // {
+    //     ROS_INFO_STREAM("\033[1;32m global_relative_pose_optional: " << std::endl << global_relative_pose_optional.value() << "\033[0m");
+    // }
+
+    // publish updated transform
+    // Eigen::Affine3f transCur = pcl::getTransformation(pt.x, pt.y, pt.z, pt.roll, pt.pitch, pt.yaw);
+    previous_to_current = tf::Transform(tf::createQuaternionFromRPY(pt.roll, pt.pitch, pt.yaw), tf::Vector3(pt.x, pt.y, pt.z));
+    tfMap2Odom.sendTransform(tf::StampedTransform(previous_to_current.inverse(), ros::Time::now(), "base_link", "previous_map"));
+    publishCloud(&pubPreviousCloud, prev_session_.previousGlobalCloud, ros::Time::now(), "previous_map");
     
-
-    // addSCloops();
-    // optimizeMultisesseionGraph(true); // optimize the graph with existing edges + SC loop edges
-
-    // bool toOpt = addRSloops(); // using the optimized estimates (rough alignment using SC)
-    // optimizeMultisesseionGraph(toOpt); // optimize the graph with existing edges + SC loop edges + RS loop edges
-
-    // writeAllSessionsTrajectories(std::string("aft_intersession_loops"));
-
 } // laserCLoudHandler
 
 

@@ -9,13 +9,12 @@ Session::Session(int _idx, std::string _name, std::string _session_dir_path, boo
     : index_(_idx), name_(_name), session_dir_path_(_session_dir_path), is_base_session_(_is_base_session)
 {
     allocateMemory();
-    
     loadSessionGraph();
-    
+    loadGlobalMap();
     loadSessionScanContextDescriptors();
     loadSessionKeyframePointclouds();
 
-    const float kICPFilterSize = 0.3; // TODO move to yaml 
+    const float kICPFilterSize = 0.1; // TODO move to yaml 
     downSizeFilterICP.setLeafSize(kICPFilterSize, kICPFilterSize, kICPFilterSize);
 
 } // ctor
@@ -23,6 +22,7 @@ Session::Session(int _idx, std::string _name, std::string _session_dir_path, boo
 
 void Session::allocateMemory()
 {
+    previousGlobalCloud.reset(new pcl::PointCloud<PointType>());
     cloudKeyPoses6D.reset(new pcl::PointCloud<PointTypePose>());
     originPoses6D.reset(new pcl::PointCloud<PointTypePose>());
 }
@@ -39,8 +39,8 @@ void Session::initKeyPoses(void)
         gtsam::Pose3 pose = node.initial;
 
         thisPose6D.x = pose.translation().x();
-        thisPose6D.y = pose.translation().x();
-        thisPose6D.z = pose.translation().x();
+        thisPose6D.y = pose.translation().y();
+        thisPose6D.z = pose.translation().z();
         thisPose6D.intensity = node_idx; // TODO
         thisPose6D.roll  = pose.rotation().roll();
         thisPose6D.pitch = pose.rotation().pitch();
@@ -141,6 +141,13 @@ void Session::loopFindNearKeyframesLocalCoord(
     *nearKeyframes = *cloud_temp;
 } // loopFindNearKeyframesLocalCoord
 
+void Session::loadGlobalMap()
+{
+    std::string pcd_global_cloud = session_dir_path_ + "/cloudGlobal.pcd";
+    pcl::io::loadPCDFile<PointType> (pcd_global_cloud, *previousGlobalCloud);
+    cout << "PCDs are loaded (" << name_ << ", with " << previousGlobalCloud->points.size() << "points )" << endl;
+
+} // loadGlobalMap
 
 void Session::loadSessionKeyframePointclouds()
 {

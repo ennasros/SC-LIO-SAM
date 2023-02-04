@@ -29,6 +29,9 @@ using namespace LTslamParam;
 class LTslam : public RosParamServer
 {
 public:
+    tf::TransformBroadcaster tfMap2Odom;
+    tf::Transform previous_to_current;
+
     // Sessions 
     static inline int num_sessions = 1; // session index should start from 1
 
@@ -39,6 +42,7 @@ public:
     SessionsDict sessions_dict_;
 
     ros::Subscriber subCloud;
+    ros::Publisher pubPreviousCloud;
 
     // Pose graph 
     
@@ -113,6 +117,9 @@ public:
                         const int& loop_idx_prev_session);
     std::optional<gtsam::Pose3> doICPGlobalRelative(Session& target_sess, Session& source_sess, 
                         const int& loop_idx_target_session, const int& loop_idx_source_session);
+    std::optional<gtsam::Pose3> doPreviousICPGlobalRelative(
+                        pcl::PointCloud<PointType>::Ptr cureKeyframeCloud, 
+                        const int& loop_idx_prev_session);
 
     // saver 
     gtsam::Pose3 getPoseOfIsamUsingKey(Key _key);

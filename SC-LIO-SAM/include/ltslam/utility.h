@@ -9,6 +9,8 @@
 #include <sensor_msgs/NavSatFix.h>
 #include <sensor_msgs/image_encodings.h>
 
+#include <tf_conversions/tf_eigen.h>
+
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
 

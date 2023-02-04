@@ -39,6 +39,7 @@ public:
 
     pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D; // used for parsing submap represented in central coord
     pcl::PointCloud<PointTypePose>::Ptr originPoses6D;
+    pcl::PointCloud<PointType>::Ptr previousGlobalCloud;
 
     std::vector<pcl::PointCloud<PointType>::Ptr> cloudKeyFrames;
     pcl::VoxelGrid<PointType> downSizeFilterICP;
@@ -50,6 +51,7 @@ public:
     Session(int _idx, std::string _name, std::string _session_dir, bool _is_base_session);
 
     void loadSessionGraph();
+    void loadGlobalMap();
     void loadSessionScanContextDescriptors();
     void loadSessionKeyframePointclouds();
 
@@ -75,9 +77,10 @@ public:
 
         allocateMemory();
         loadSessionGraph();
+        loadGlobalMap();
         loadSessionScanContextDescriptors();
         loadSessionKeyframePointclouds();
-        const float kICPFilterSize = 0.3; // TODO move to yaml 
+        const float kICPFilterSize = 0.1; // TODO move to yaml 
         downSizeFilterICP.setLeafSize(kICPFilterSize, kICPFilterSize, kICPFilterSize);
 
         return *this;
