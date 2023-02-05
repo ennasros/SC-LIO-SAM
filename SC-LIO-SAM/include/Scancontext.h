@@ -75,7 +75,8 @@ public:
     // for ltslam 
     // User-side API for multi-session
     void saveScancontextAndKeys( Eigen::MatrixXd _scd );
-    std::pair<int, float> detectLoopClosureIDBetweenSession ( std::vector<float>& curr_key,  Eigen::MatrixXd& curr_desc);
+    // std::pair<int, float> detectLoopClosureIDBetweenSession ( std::vector<float>& curr_key,  Eigen::MatrixXd& curr_desc);
+    std::vector<std::tuple<int, double, float>> detectLoopClosureIDBetweenSession ( std::vector<float>& curr_key,  Eigen::MatrixXd& curr_desc);
 
     const Eigen::MatrixXd& getConstRefRecentSCD(void);
 

@@ -5,24 +5,21 @@ Session::Session()
 
 }
 
-Session::Session(int _idx, std::string _name, std::string _session_dir_path, bool _is_base_session)
-    : index_(_idx), name_(_name), session_dir_path_(_session_dir_path), is_base_session_(_is_base_session)
+Session::Session(int _idx, std::string _name, std::string _session_dir_path, bool _is_base_session, float _DS_filter_size = 0.1)
+    : index_(_idx), name_(_name), session_dir_path_(_session_dir_path), is_base_session_(_is_base_session), DS_filter_size_(_DS_filter_size)
 {
+    downSizeFilterICP.setLeafSize(DS_filter_size_, DS_filter_size_, DS_filter_size_);
+
     allocateMemory();
     loadSessionGraph();
-    loadGlobalMap();
     loadSessionScanContextDescriptors();
     loadSessionKeyframePointclouds();
-
-    const float kICPFilterSize = 0.1; // TODO move to yaml 
-    downSizeFilterICP.setLeafSize(kICPFilterSize, kICPFilterSize, kICPFilterSize);
-
 } // ctor
 
 
 void Session::allocateMemory()
 {
-    previousGlobalCloud.reset(new pcl::PointCloud<PointType>());
+    globalCloudMap.reset(new pcl::PointCloud<PointType>());
     cloudKeyPoses6D.reset(new pcl::PointCloud<PointTypePose>());
     originPoses6D.reset(new pcl::PointCloud<PointTypePose>());
 }
@@ -141,14 +138,6 @@ void Session::loopFindNearKeyframesLocalCoord(
     *nearKeyframes = *cloud_temp;
 } // loopFindNearKeyframesLocalCoord
 
-void Session::loadGlobalMap()
-{
-    std::string pcd_global_cloud = session_dir_path_ + "/cloudGlobal.pcd";
-    pcl::io::loadPCDFile<PointType> (pcd_global_cloud, *previousGlobalCloud);
-    cout << "PCDs are loaded (" << name_ << ", with " << previousGlobalCloud->points.size() << "points )" << endl;
-
-} // loadGlobalMap
-
 void Session::loadSessionKeyframePointclouds()
 {
     std::string pcd_dir = session_dir_path_ + "/Scans/";
@@ -177,12 +166,24 @@ void Session::loadSessionKeyframePointclouds()
         pcl::io::loadPCDFile<PointType> (_pcd_name.second, *thisKeyFrame);
         cloudKeyFrames.push_back(thisKeyFrame);
 
+        // Add transformed frame to global cloud
+        pcl::PointCloud<PointType>::Ptr transformedKeyFrameTemp = transformPointCloud(thisKeyFrame, &cloudKeyPoses6D->points[num_pcd_loaded]);
+        *globalCloudMap += *transformedKeyFrameTemp;
+
         num_pcd_loaded++;
         if(num_pcd_loaded >= nodes_.size()) {
             break;
         }
     }
     cout << "PCDs are loaded (" << name_ << ")" << endl;
+
+    cout << "Downsampling previous global map." << endl;
+
+    // downsample global map
+    pcl::PointCloud<PointType>::Ptr DScloud_temp(new pcl::PointCloud<PointType>());
+    downSizeFilterICP.setInputCloud(globalCloudMap);
+    downSizeFilterICP.filter(*DScloud_temp);
+    *globalCloudMap = *DScloud_temp;
 }
 
 

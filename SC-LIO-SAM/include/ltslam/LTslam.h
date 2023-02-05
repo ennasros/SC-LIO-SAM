@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lio_sam/cloud_info.h"
+// #include "lio_sam/cloud_info.h"
 
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/nonlinear/Values.h>
@@ -38,7 +38,7 @@ public:
     // const static inline int kSessionStartIdxOffset = 1000000; // int max 2147483647 so ok.
 
     Sessions sessions_;
-    Session prev_session_;
+    std::unique_ptr<Session> prev_session_;
     SessionsDict sessions_dict_;
 
     ros::Subscriber subCloud;

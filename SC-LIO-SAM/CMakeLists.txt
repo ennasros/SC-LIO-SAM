@@ -105,7 +105,7 @@ add_executable(${PROJECT_NAME}_ltslam src/ltslam/main.cpp
   src/ltslam/LTslam.cpp
   src/Scancontext.cpp
 )
-add_dependencies(${PROJECT_NAME}_ltslam ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
+add_dependencies(${PROJECT_NAME}_ltslam ${catkin_EXPORTED_TARGETS})
 target_compile_options(${PROJECT_NAME}_ltslam PRIVATE ${OpenMP_CXX_FLAGS})
 target_link_libraries(${PROJECT_NAME}_ltslam 
   ${catkin_LIBRARIES} 

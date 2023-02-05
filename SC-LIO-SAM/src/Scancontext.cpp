@@ -260,8 +260,11 @@ void SCManager::makeAndSaveScancontextAndKeys( pcl::PointCloud<SCPointType> & _s
 } // SCManager::makeAndSaveScancontextAndKeys
 
 
-std::pair<int, float> SCManager::detectLoopClosureIDBetweenSession (std::vector<float>& _curr_key, Eigen::MatrixXd& _curr_desc)
+// std::pair<int, float> SCManager::detectLoopClosureIDBetweenSession (std::vector<float>& _curr_key, Eigen::MatrixXd& _curr_desc)
+std::vector<std::tuple<int, double, float>> SCManager::detectLoopClosureIDBetweenSession (std::vector<float>& _curr_key, Eigen::MatrixXd& _curr_desc)
 {
+    std::vector<std::tuple<int, double, float>> candidates;
+
     int loop_id { -1 }; // init with -1, -1 means no loop (== LeGO-LOAM's variable "closestHistoryFrameID")
 
     auto& curr_key = _curr_key;
@@ -301,6 +304,11 @@ std::pair<int, float> SCManager::detectLoopClosureIDBetweenSession (std::vector<
         double candidate_dist = sc_dist_result.first;
         int candidate_align = sc_dist_result.second;
 
+        if (candidate_dist < SC_DIST_THRES)
+        {
+            float yaw_diff_rad = deg2rad(candidate_align * PC_UNIT_SECTORANGLE);
+            candidates.emplace_back(std::tuple<int, double, float>(candidate_indexes[candidate_iter_idx], candidate_dist, yaw_diff_rad));
+        }
         if( candidate_dist < min_dist )
         {
             min_dist = candidate_dist;
@@ -319,7 +327,7 @@ std::pair<int, float> SCManager::detectLoopClosureIDBetweenSession (std::vector<
     float yaw_diff_rad = deg2rad(nn_align * PC_UNIT_SECTORANGLE);
     std::pair<int, float> result {loop_id, yaw_diff_rad};
 
-    return result;
+    return candidates;
 
 } // SCManager::detectLoopClosureIDBetweenSession
 

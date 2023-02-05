@@ -86,7 +86,7 @@ LTslam::LTslam()
     // optimizeMultisesseionGraph(true);
 
     // publish old map
-    publishCloud(&pubPreviousCloud, prev_session_.previousGlobalCloud, ros::Time::now(), "previous_map");
+    publishCloud(&pubPreviousCloud, prev_session_->globalCloudMap, ros::Time::now(), "previous_map");
 
     // subscribe to mapping data
     // subCloud = nh.subscribe<lio_sam::cloud_info>("lio_sam/feature/cloud_info", 1, &LTslam::laserCloudInfoHandler, this, ros::TransportHints().tcpNoDelay());
@@ -261,7 +261,7 @@ std::optional<gtsam::Pose3> LTslam::doPreviousICPVirtualRelative( // for SC loop
     mtx.lock();
     pcl::PointCloud<PointType>::Ptr previousKeyframeCloud(new pcl::PointCloud<PointType>());
     int historyKeyframeSearchNum = 5; // TODO move to yaml 
-    prev_session_.loopFindNearKeyframesLocalCoord(previousKeyframeCloud, loop_idx_prev_session, historyKeyframeSearchNum); 
+    prev_session_->loopFindNearKeyframesLocalCoord(previousKeyframeCloud, loop_idx_prev_session, historyKeyframeSearchNum); 
     mtx.unlock(); // unlock after loopFindNearKeyframesWithRespectTo because many new in the loopFindNearKeyframesWithRespectTo
 
     // ICP Settings
@@ -366,7 +366,7 @@ std::optional<gtsam::Pose3> LTslam::doPreviousICPGlobalRelative( // For RS loop
     mtx.lock();
     pcl::PointCloud<PointType>::Ptr previousKeyframeCloud(new pcl::PointCloud<PointType>());
     int historyKeyframeSearchNum = 5; // TODO move to yaml 
-    prev_session_.loopFindNearKeyframesLocalCoord(previousKeyframeCloud, loop_idx_prev_session, historyKeyframeSearchNum); 
+    prev_session_->loopFindNearKeyframesLocalCoord(previousKeyframeCloud, loop_idx_prev_session, historyKeyframeSearchNum); 
     mtx.unlock(); // unlock after loopFindNearKeyframesWithRespectTo because many new in the loopFindNearKeyframesWithRespectTo
 
     // ICP Settings
@@ -422,40 +422,40 @@ std::optional<gtsam::Pose3> LTslam::doPreviousICPGlobalRelative( // For RS loop
     Eigen::Affine3f tCorrect = correctionLidarFrame * tWrong.cast<float>();// pre-multiplying -> successive rotation about a fixed frame
     pcl::getTranslationAndEulerAngles (tCorrect, x, y, z, roll, pitch, yaw);
     gtsam::Pose3 poseFrom = Pose3(Rot3::RzRyRx(roll, pitch, yaw), Point3(x, y, z));
-    gtsam::Pose3 poseTo = pclPointTogtsamPose3(prev_session_.cloudKeyPoses6D->points[loop_idx_prev_session]);
+    gtsam::Pose3 poseTo = pclPointTogtsamPose3(prev_session_->cloudKeyPoses6D->points[loop_idx_prev_session]);
 
     return poseFrom.between(poseTo);
 } // doPreviousICPGlobalRelative
 
 void LTslam::detectInterSessionSCloops() // using ScanContext
 {
-    auto& target_sess = sessions_.at(target_sess_idx); 
-    auto& source_sess = sessions_.at(source_sess_idx);
+    // auto& target_sess = sessions_.at(target_sess_idx); 
+    // auto& source_sess = sessions_.at(source_sess_idx);
 
-    // Detect loop closures: Find loop edge index pairs 
-    SCLoopIdxPairs_.clear();
-    RSLoopIdxPairs_.clear();
-    auto& target_scManager = target_sess.scManager;
-    auto& source_scManager = source_sess.scManager;
-    for (int source_node_idx=0; source_node_idx < int(source_scManager.polarcontexts_.size()); source_node_idx++)
-    {
-        std::vector<float> source_node_key = source_scManager.polarcontext_invkeys_mat_.at(source_node_idx);
-        Eigen::MatrixXd source_node_scd = source_scManager.polarcontexts_.at(source_node_idx);
+    // // Detect loop closures: Find loop edge index pairs 
+    // SCLoopIdxPairs_.clear();
+    // RSLoopIdxPairs_.clear();
+    // auto& target_scManager = target_sess.scManager;
+    // auto& source_scManager = source_sess.scManager;
+    // for (int source_node_idx=0; source_node_idx < int(source_scManager.polarcontexts_.size()); source_node_idx++)
+    // {
+    //     std::vector<float> source_node_key = source_scManager.polarcontext_invkeys_mat_.at(source_node_idx);
+    //     Eigen::MatrixXd source_node_scd = source_scManager.polarcontexts_.at(source_node_idx);
 
-        auto detectResult = target_scManager.detectLoopClosureIDBetweenSession(source_node_key, source_node_scd); // first: nn index, second: yaw diff 
+    //     auto detectResult = target_scManager.detectLoopClosureIDBetweenSession(source_node_key, source_node_scd); // first: nn index, second: yaw diff 
 
-        int loop_idx_source_session = source_node_idx;
-        int loop_idx_target_session = detectResult.first;
+    //     int loop_idx_source_session = source_node_idx;
+    //     int loop_idx_target_session = detectResult.first;
 
-        if(loop_idx_target_session == -1) { // TODO using NO_LOOP_FOUND rather using -1 
-            RSLoopIdxPairs_.emplace_back(std::pair(-1, loop_idx_source_session)); // -1 will be later be found (nn pose). 
-            continue;
-        }
+    //     if(loop_idx_target_session == -1) { // TODO using NO_LOOP_FOUND rather using -1 
+    //         RSLoopIdxPairs_.emplace_back(std::pair(-1, loop_idx_source_session)); // -1 will be later be found (nn pose). 
+    //         continue;
+    //     }
 
-        SCLoopIdxPairs_.emplace_back(std::pair(loop_idx_target_session, loop_idx_source_session));
-    }
+    //     SCLoopIdxPairs_.emplace_back(std::pair(loop_idx_target_session, loop_idx_source_session));
+    // }
 
-    ROS_INFO_STREAM("\033[1;32m Total " << SCLoopIdxPairs_.size() << " inter-session loops are found. \033[0m");
+    // ROS_INFO_STREAM("\033[1;32m Total " << SCLoopIdxPairs_.size() << " inter-session loops are found. \033[0m");
 } // detectInterSessionSCloops
 
 
@@ -467,7 +467,7 @@ void LTslam::detectInterSessionRSloops() // using ScanContext
 int LTslam::detectPreviousSessionSCloops(pcl::PointCloud<PointType>::Ptr laserCloudRawDS) // returns index
 {
     // detect loop closure using scancontext manager of previous session
-    auto& prev_scManager = prev_session_.scManager;
+    auto& prev_scManager = prev_session_->scManager;
 
     // get scan context description and key of current scan
     pcl::PointCloud<PointType>::Ptr thisRawCloudKeyFrame(new pcl::PointCloud<PointType>());
@@ -479,12 +479,39 @@ int LTslam::detectPreviousSessionSCloops(pcl::PointCloud<PointType>::Ptr laserCl
     SCLoopIdxPairs_.clear();
     RSLoopIdxPairs_.clear();
     auto detectResult = prev_scManager.detectLoopClosureIDBetweenSession(curr_node_key, curr_node_scd); // first: nn index, second: yaw diff 
-    int loop_idx_target_session = detectResult.first;
-    if(loop_idx_target_session == -1) { // TODO using NO_LOOP_FOUND rather using -1 
+    
+    int loop_idx_target_session = -1;
+    if (detectResult.size() == 0)
+    {
         ROS_INFO_STREAM("No sc match detected for current scan");
-    } 
-    else {
-        ROS_INFO_STREAM("\033[1;32m A match was found between node at index " << loop_idx_target_session << " and current scan. \033[0m");
+    }
+    else
+    {
+        ROS_INFO_STREAM("\033[1;32m Found " <<  detectResult.size() << " match(es) was found between existing nodes and current scan. \033[0m");
+        int min_id = -1;
+        double min_sc_dist = 0;
+        for(auto match : detectResult)
+        {
+            const auto [ id, sc_dist, yaw_diff ] = match;
+            cout << "For node " << id << ", sc_dist = " << sc_dist << ", yaw_diff = " << yaw_diff << std::endl;
+
+            if (min_id == -1)
+            {
+                min_id = id;
+                min_sc_dist = sc_dist;
+            }
+            else
+            {
+                if (sc_dist < min_sc_dist)
+                {
+                    min_id = id;
+                    min_sc_dist = sc_dist;
+                }
+            }
+        }
+
+        ROS_INFO_STREAM("\033[1;32m Using node " << min_id << " and sc_dist = " << min_sc_dist << " \033[0m");
+        loop_idx_target_session = min_id;
     }
 
     return loop_idx_target_session;    
@@ -532,7 +559,7 @@ void LTslam::laserCloudInfoHandler(const sensor_msgs::PointCloud2::ConstPtr& msg
     if (idx == -1) { return; }
 
     // get pose info of index at prev_session
-    PointTypePose pt = prev_session_.cloudKeyPoses6D->points[idx]; // get coords
+    PointTypePose pt = prev_session_->cloudKeyPoses6D->points[idx]; // get coords
     gtsam::Pose3 poseTo = pclPointTogtsamPose3(pt);
     ROS_INFO_STREAM("\033[1;32m cloudKeyPoses6D: " << poseTo << "\033[0m");
 
@@ -553,7 +580,7 @@ void LTslam::laserCloudInfoHandler(const sensor_msgs::PointCloud2::ConstPtr& msg
     // Eigen::Affine3f transCur = pcl::getTransformation(pt.x, pt.y, pt.z, pt.roll, pt.pitch, pt.yaw);
     previous_to_current = tf::Transform(tf::createQuaternionFromRPY(pt.roll, pt.pitch, pt.yaw), tf::Vector3(pt.x, pt.y, pt.z));
     tfMap2Odom.sendTransform(tf::StampedTransform(previous_to_current.inverse(), ros::Time::now(), "base_link", "previous_map"));
-    publishCloud(&pubPreviousCloud, prev_session_.previousGlobalCloud, ros::Time::now(), "previous_map");
+    publishCloud(&pubPreviousCloud, prev_session_->globalCloudMap, ros::Time::now(), "previous_map");
     
 } // laserCLoudHandler
 
@@ -879,7 +906,7 @@ void LTslam::addSessionToCentralGraph(const Session& _sess)
 void LTslam::loadPrevSession()
 {
     ROS_INFO_STREAM("\033[1;32m Load previous session pose dasa from: " << previous_session_dir_ << "\033[0m");
-    prev_session_ = Session(1, "previous_session",previous_session_dir_, true);
+    prev_session_ = std::unique_ptr<Session>(new Session(1, "previous_session",previous_session_dir_, true, dsFilterSize));
     std::cout << std::boolalpha;   
     ROS_INFO_STREAM("\033[1;32m Succsessfully read previous session\033[0m");
 } // loadPrevSession

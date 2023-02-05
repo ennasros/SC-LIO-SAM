@@ -31,6 +31,7 @@ public:
     std::string session_dir_path_;
 
     bool is_base_session_;
+    float DS_filter_size_;
 
     SessionNodes nodes_;
     SessionEdges edges_;
@@ -39,7 +40,7 @@ public:
 
     pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D; // used for parsing submap represented in central coord
     pcl::PointCloud<PointTypePose>::Ptr originPoses6D;
-    pcl::PointCloud<PointType>::Ptr previousGlobalCloud;
+    pcl::PointCloud<PointType>::Ptr globalCloudMap;
 
     std::vector<pcl::PointCloud<PointType>::Ptr> cloudKeyFrames;
     pcl::VoxelGrid<PointType> downSizeFilterICP;
@@ -48,10 +49,9 @@ public:
 
 public:
     Session();
-    Session(int _idx, std::string _name, std::string _session_dir, bool _is_base_session);
+    Session(int _idx, std::string _name, std::string _session_dir, bool _is_base_session, float _DS_filter_size);
 
     void loadSessionGraph();
-    void loadGlobalMap();
     void loadSessionScanContextDescriptors();
     void loadSessionKeyframePointclouds();
 
@@ -67,24 +67,6 @@ public:
 
     void allocateMemory();
 
-    // copy assignment operator
-    Session& operator=(Session other)
-    {
-        index_ = other.index_;
-        name_ = other.name_;
-        session_dir_path_ = other.session_dir_path_;
-        is_base_session_ = other.is_base_session_;
-
-        allocateMemory();
-        loadSessionGraph();
-        loadGlobalMap();
-        loadSessionScanContextDescriptors();
-        loadSessionKeyframePointclouds();
-        const float kICPFilterSize = 0.1; // TODO move to yaml 
-        downSizeFilterICP.setLeafSize(kICPFilterSize, kICPFilterSize, kICPFilterSize);
-
-        return *this;
-    }
 }; // Session
 
 

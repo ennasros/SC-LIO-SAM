@@ -35,6 +35,8 @@ public:
     float mappingCornerLeafSize;
     float mappingSurfLeafSize;
 
+    float dsFilterSize;
+
 
 public:
     RosParamServer();
