@@ -19,6 +19,8 @@ public:
     std::string central_sess_name_;
     std::string query_sess_name_;
 
+    std::string lidar_topic;
+
     std::string save_directory_;
     
     bool is_display_debug_msgs_;
@@ -32,6 +34,7 @@ public:
     float scancontextLeafSize;
     float mappingCornerLeafSize;
     float mappingSurfLeafSize;
+
 
 public:
     RosParamServer();

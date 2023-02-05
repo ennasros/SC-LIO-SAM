@@ -10,6 +10,8 @@ RosParamServer::RosParamServer()
     nh.param<std::string>("ltslam/central_sess_name", central_sess_name_, "01");
     nh.param<std::string>("ltslam/query_sess_name", query_sess_name_, "02");
 
+    nh.param<std::string>("ltslam/lidar_topic", lidar_topic, "/lidar/points");
+
     nh.param<std::string>("ltslam/save_directory", save_directory_, "/LTslam/"); // it means /.../home/LTslam/
     
     int unused = system((std::string("exec rm -r ") + save_directory_).c_str());

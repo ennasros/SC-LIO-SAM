@@ -89,7 +89,8 @@ LTslam::LTslam()
     publishCloud(&pubPreviousCloud, prev_session_.previousGlobalCloud, ros::Time::now(), "previous_map");
 
     // subscribe to mapping data
-    subCloud = nh.subscribe<lio_sam::cloud_info>("lio_sam/feature/cloud_info", 1, &LTslam::laserCloudInfoHandler, this, ros::TransportHints().tcpNoDelay());
+    // subCloud = nh.subscribe<lio_sam::cloud_info>("lio_sam/feature/cloud_info", 1, &LTslam::laserCloudInfoHandler, this, ros::TransportHints().tcpNoDelay());
+    subCloud = nh.subscribe<sensor_msgs::PointCloud2>(lidar_topic, 1, &LTslam::laserCloudInfoHandler, this, ros::TransportHints().tcpNoDelay());
 } // ctor
 
 
@@ -489,40 +490,43 @@ int LTslam::detectPreviousSessionSCloops(pcl::PointCloud<PointType>::Ptr laserCl
     return loop_idx_target_session;    
 } // detectPreviousSessionSCloops
 
-void LTslam::laserCloudInfoHandler(const lio_sam::cloud_infoConstPtr& msgIn)
+// void LTslam::laserCloudInfoHandler(const lio_sam::cloud_infoConstPtr& msgIn)
+// void LTslam::laserCloudInfoHandler(const lio_sam::cloud_infoConstPtr& msgIn)
+void LTslam::laserCloudInfoHandler(const sensor_msgs::PointCloud2::ConstPtr& msgIn)
 {
     ROS_INFO("Received cloud info const ptr");
 
     // extract info and feature cloud
-    auto cloudInfo = *msgIn;
+    // auto cloudInfo = *msgIn;
     pcl::PointCloud<PointType>::Ptr laserCloudRaw(new pcl::PointCloud<PointType>());
-    pcl::PointCloud<PointType>::Ptr laserCloudCornerLast(new pcl::PointCloud<PointType>());
-    pcl::PointCloud<PointType>::Ptr laserCloudSurfLast(new pcl::PointCloud<PointType>());
-    pcl::fromROSMsg(msgIn->cloud_corner,  *laserCloudCornerLast);
-    pcl::fromROSMsg(msgIn->cloud_surface, *laserCloudSurfLast);
-    pcl::fromROSMsg(msgIn->cloud_deskewed,  *laserCloudRaw); 
+    pcl::fromROSMsg(*msgIn, *laserCloudRaw);
+    // pcl::PointCloud<PointType>::Ptr laserCloudCornerLast(new pcl::PointCloud<PointType>());
+    // pcl::PointCloud<PointType>::Ptr laserCloudSurfLast(new pcl::PointCloud<PointType>());
+    // pcl::fromROSMsg(msgIn->cloud_corner,  *laserCloudCornerLast);
+    // pcl::fromROSMsg(msgIn->cloud_surface, *laserCloudSurfLast);
+    // pcl::fromROSMsg(msgIn->cloud_deskewed,  *laserCloudRaw); 
 
     ROS_INFO("Extracted cloud info ");
 
     // down sample clouds
     pcl::VoxelGrid<PointType> downSizeFilterSC;
-    pcl::VoxelGrid<PointType> downSizeFilterCorner;
-    pcl::VoxelGrid<PointType> downSizeFilterSurf;
+    // pcl::VoxelGrid<PointType> downSizeFilterCorner;
+    // pcl::VoxelGrid<PointType> downSizeFilterSurf;
     downSizeFilterSC.setLeafSize(scancontextLeafSize, scancontextLeafSize, scancontextLeafSize);
-    downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
-    downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
+    // downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
+    // downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
 
     pcl::PointCloud<PointType>::Ptr laserCloudRawDS(new pcl::PointCloud<PointType>());
     downSizeFilterSC.setInputCloud(laserCloudRaw);
     downSizeFilterSC.filter(*laserCloudRawDS);       
 
-    pcl::PointCloud<PointType>::Ptr laserCloudCornerLastDS(new pcl::PointCloud<PointType>());
-    downSizeFilterCorner.setInputCloud(laserCloudCornerLast);
-    downSizeFilterCorner.filter(*laserCloudCornerLastDS);
+    // pcl::PointCloud<PointType>::Ptr laserCloudCornerLastDS(new pcl::PointCloud<PointType>());
+    // downSizeFilterCorner.setInputCloud(laserCloudCornerLast);
+    // downSizeFilterCorner.filter(*laserCloudCornerLastDS);
 
-    pcl::PointCloud<PointType>::Ptr laserCloudSurfLastDS(new pcl::PointCloud<PointType>());
-    downSizeFilterSurf.setInputCloud(laserCloudSurfLast);
-    downSizeFilterSurf.filter(*laserCloudSurfLastDS);
+    // pcl::PointCloud<PointType>::Ptr laserCloudSurfLastDS(new pcl::PointCloud<PointType>());
+    // downSizeFilterSurf.setInputCloud(laserCloudSurfLast);
+    // downSizeFilterSurf.filter(*laserCloudSurfLastDS);
      
     int idx = detectPreviousSessionSCloops(laserCloudRawDS);
     if (idx == -1) { return; }

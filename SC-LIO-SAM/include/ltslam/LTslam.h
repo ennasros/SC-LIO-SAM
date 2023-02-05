@@ -76,7 +76,9 @@ public:
     ~LTslam();
 
     void keyframeHandler(const sensor_msgs::PointCloud2ConstPtr& keyframe);
-    void laserCloudInfoHandler(const lio_sam::cloud_infoConstPtr& msgIn);
+    // void laserCloudInfoHandler(const lio_sam::cloud_infoConstPtr& msgIn);
+    void laserCloudInfoHandler(const sensor_msgs::PointCloud2::ConstPtr& msgIn);
+
 
     void run( void );
 
